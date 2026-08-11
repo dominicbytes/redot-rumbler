@@ -1,0 +1,59 @@
+{
+  "now": 1786453200,
+  "type": "user",
+  "user_id": 1001,
+  "channel_id": null,
+  "since": null,
+  "max_num_results": 50,
+  "followers": {
+    "num_followers": 10,
+    "num_followers_total": 20,
+    "latest_follower": {"username": "Alice", "followed_on": "2026-08-11T10:00:00Z"},
+    "recent_followers": [
+      {"username": "Alice", "followed_on": "2026-08-11T10:00:00Z"},
+      {"username": "Bob", "followed_on": "2026-08-11T09:00:00Z"}
+    ]
+  },
+  "subscribers": {
+    "num_subscribers": 2,
+    "latest_subscriber": {"user": "Carol", "username": "Carol", "amount_cents": 500, "amount_dollars": 5, "subscribed_on": "2026-08-11T10:05:00Z"},
+    "recent_subscribers": [
+      {"user": "Carol", "username": "Carol", "amount_cents": 500, "amount_dollars": 5, "subscribed_on": "2026-08-11T10:05:00Z"}
+    ]
+  },
+  "gifted_subs": {
+    "num_gifted_subs": 1,
+    "latest_gifted_sub": {"total_gifts": 1, "gift_type": "rumble", "remaining_gifts": 1, "video_id": 7001, "purchased_by": "Dana"},
+    "recent_gifted_subs": [
+      {"total_gifts": 1, "gift_type": "rumble", "remaining_gifts": 1, "video_id": 7001, "purchased_by": "Dana"}
+    ]
+  },
+  "livestreams": [
+    {
+      "id": "stream-1",
+      "title": "Fixture Live",
+      "created_on": "2026-08-11T09:30:00Z",
+      "is_live": true,
+      "categories": {
+        "primary": {"slug": "gaming", "title": "Gaming"},
+        "secondary": {"slug": "simulators", "title": "Simulators"}
+      },
+      "stream_key": "SYNTHETIC_REMOVAL_MARKER",
+      "likes": 3,
+      "dislikes": 1,
+      "watching_now": 19,
+      "chat": {
+        "latest_message": {"username": "ViewerA", "badges": ["premium"], "text": "first", "created_on": "2026-08-11T10:10:00Z"},
+        "recent_messages": [
+          {"username": "ViewerA", "badges": ["premium"], "text": "first", "created_on": "2026-08-11T10:10:00Z"},
+          {"username": "ViewerB", "badges": [], "text": "older", "created_on": "2026-08-11T10:09:00Z"}
+        ],
+        "latest_rant": {"username": "Supporter", "badges": ["whale-blue"], "text": "great", "created_on": "2026-08-11T10:11:00Z", "expires_on": "2026-08-11T10:13:00Z", "amount_cents": 250, "amount_dollars": 2.5},
+        "recent_rants": [
+          {"username": "Supporter", "badges": ["whale-blue"], "text": "great", "created_on": "2026-08-11T10:11:00Z", "expires_on": "2026-08-11T10:13:00Z", "amount_cents": 250, "amount_dollars": 2.5}
+        ]
+      }
+    }
+  ],
+  "future_block": {"stream_key": "SYNTHETIC_NESTED_MARKER", "new_value": 3}
+}

@@ -1,0 +1,145 @@
+extends SceneTree
+
+const FIXTURE_ROOT: String = "res://tests/fixtures/ms001"
+
+var _checks: int = 0
+var _failures: PackedStringArray = PackedStringArray()
+var _parser := RumblePayloadParser.new()
+
+
+func _init() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
+	var baseline_result := _parser.parse_json(_read("baseline.json"))
+	_check(baseline_result.is_success(), "full official-shaped fixture parses")
+	if not baseline_result.is_success():
+		_finish()
+		return
+	var baseline := baseline_result.snapshot
+	_check(baseline.user_id == "1001" and baseline.channel_id.is_empty(), "numeric and null identity fields normalize safely")
+	_check(baseline.follower_count == 10 and baseline.follower_total_count == 20, "both documented follower counters map")
+	_check(baseline.latest_follower.username == "Alice" and baseline.recent_followers.size() == 2, "latest and recent followers map")
+	_check(baseline.subscriber_count == 2 and baseline.latest_subscriber.amount_cents == 500, "subscriber totals and amounts map")
+	_check(baseline.gifted_subscription_count == 1 and baseline.latest_gifted_subscription.video_id == "7001", "gifted subscription fields map")
+	_check(baseline.livestreams.size() == 1 and baseline.livestreams[0].watching_now == 19, "livestream viewers and identity map")
+	_check(baseline.livestreams[0].primary_category.slug == "gaming" and baseline.livestreams[0].secondary_category.title == "Simulators", "both category levels map")
+	_check(baseline.livestreams[0].recent_messages.size() == 2 and baseline.livestreams[0].recent_messages[0].badges == PackedStringArray(["premium"]), "chat messages and badges map")
+	_check(baseline.livestreams[0].recent_rants[0].amount_cents == 250 and is_equal_approx(baseline.livestreams[0].recent_rants[0].amount_dollars, 2.5), "rant amounts map as numeric data")
+	var public_json := JSON.stringify(baseline.to_dictionary())
+	_check(not public_json.contains("stream_key") and not public_json.contains("SYNTHETIC_REMOVAL_MARKER"), "stream keys are stripped before typed models")
+	_check(baseline.unknown_field_paths.has("future_block") and not public_json.contains("new_value"), "unknown diagnostics retain bounded paths without values")
+
+	var differ := RumbleSnapshotDiffer.new()
+	var baseline_changes := differ.process(baseline, 1000)
+	_check(baseline_changes.was_baseline, "first good poll is identified as a baseline")
+	_check(_event_count(baseline_changes) == 0, "first baseline replays no historical events by default")
+	var update_result := _parser.parse_json(_read("update.json"))
+	_check(update_result.is_success(), "overlapping update fixture parses")
+	var update_changes := differ.process(update_result.snapshot, 1005)
+	_check(update_changes.followers.size() == 1 and update_changes.followers[0].username == "Erin", "one new follower emits after overlap")
+	_check(update_changes.subscribers.size() == 1 and update_changes.subscribers[0].username == "Frank", "one new subscriber emits after overlap")
+	_check(update_changes.gifted_subscriptions.size() == 1 and update_changes.gifted_subscriptions[0].purchased_by == "Grace", "one new gift emits after overlap")
+	_check(update_changes.chat_messages.size() == 1 and update_changes.chat_messages[0].text == "new", "one new chat emits after overlap")
+	_check(update_changes.rants.size() == 1 and update_changes.rants[0].amount_cents == 100, "one new rant emits after overlap")
+	_check(update_changes.counter_deltas.size() == 4 and int(update_changes.counter_deltas.subscribers) == 1, "all increasing documented counters emit positive deltas")
+	_check(_transition_count(update_changes, "started") == 1 and _transition_count(update_changes, "updated") == 1, "new and changed livestreams emit distinct transitions")
+	_check(update_changes.schema_warnings.has("livestreams[].future_metric"), "future livestream fields emit a bounded schema warning")
+	var duplicate_changes := differ.process(update_result.snapshot, 1006)
+	_check(_event_count(duplicate_changes) == 0 and duplicate_changes.stream_transitions.is_empty(), "identical overlap never double-fires")
+
+	var reordered_data: Dictionary = JSON.parse_string(_read("update.json"))
+	reordered_data.followers.recent_followers.reverse()
+	reordered_data.subscribers.recent_subscribers.reverse()
+	reordered_data.gifted_subs.recent_gifted_subs.reverse()
+	reordered_data.livestreams[0].chat.recent_messages.reverse()
+	reordered_data.livestreams[0].chat.recent_rants.reverse()
+	var reordered := _parser.parse_json(JSON.stringify(reordered_data))
+	var reorder_changes := differ.process(reordered.snapshot, 1007)
+	_check(_event_count(reorder_changes) == 0, "reordered overlapping windows never double-fire")
+
+	var saved_state := differ.state_dictionary()
+	var restored := RumbleSnapshotDiffer.new()
+	_check(restored.load_state(saved_state), "bounded hash/counter/stream state restores from schema v1")
+	var restart_changes := restored.process(update_result.snapshot, 1008)
+	_check(_event_count(restart_changes) == 0 and restart_changes.stream_transitions.is_empty(), "restart state suppresses already observed items")
+
+	var malformed := _parser.parse_json(_read("malformed.json"))
+	_check(not malformed.is_success() and malformed.error.category == "parse", "malformed JSON is rejected with a typed parse error")
+	_check(restored.state_dictionary() == saved_state, "rejected payload does not replace last good differ state")
+	var minimal := _parser.parse_json(_read("minimal.json"))
+	_check(minimal.is_success() and minimal.snapshot.livestreams.is_empty(), "documented optional and offline fields may be missing")
+
+	var offline := _parser.parse_json(_read("offline.json"))
+	var offline_changes := restored.process(offline.snapshot, 1010)
+	_check(offline_changes.counter_resets.size() == 1 and offline_changes.counter_resets[0].counter == "subscribers", "counter decreases update baseline and emit uncertainty, not negative people")
+	_check(_transition_count(offline_changes, "ended") == 2, "live-only payload disappearance emits uncertain stream-ended transitions")
+	_check(offline_changes.stream_transitions.all(func(item: RumbleStreamTransition) -> bool: return item.uncertain), "disappearance transitions remain explicitly uncertain")
+
+	var saturated_json := _saturated_payload(50, "sat")
+	var saturated := _parser.parse_json(saturated_json)
+	var saturated_differ := RumbleSnapshotDiffer.new()
+	var saturated_changes := saturated_differ.process(saturated.snapshot, 2000)
+	_check(saturated_changes.possible_gaps.size() == 1 and saturated_changes.possible_gaps[0].source_limit == 50, "a full 50-item source window emits possible_event_gap")
+	_check(saturated_changes.chat_messages.is_empty(), "saturated first poll still remains a silent baseline")
+
+	var bounded := RumbleSnapshotDiffer.new()
+	bounded.fingerprint_capacity = 3
+	bounded.fingerprint_ttl_seconds = 10
+	bounded.process(saturated.snapshot, 3000)
+	_check(bounded.fingerprint_count() == 3, "fingerprint storage enforces per-collection capacity")
+	var one_new := _parser.parse_json(_saturated_payload(1, "fresh"))
+	bounded.process(one_new.snapshot, 3011)
+	_check(bounded.fingerprint_count() == 1, "fingerprint storage expires entries after the explicit TTL")
+
+	var bad_shape := _parser.parse_json("{\"livestreams\":{}}")
+	_check(not bad_shape.is_success() and bad_shape.error.category == "schema", "malformed collection types are rejected without coercion")
+	_finish()
+
+
+func _saturated_payload(count: int, prefix: String) -> String:
+	var messages: Array = []
+	for index: int in count:
+		messages.append({"username": "viewer-%d" % index, "badges": [], "text": "%s-%d" % [prefix, index], "created_on": "2026-08-11T10:%02d:00Z" % (index % 60)})
+	return JSON.stringify({
+		"now": 1786453400,
+		"type": "user",
+		"user_id": "fixture",
+		"max_num_results": 50,
+		"followers": {},
+		"subscribers": {},
+		"gifted_subs": {},
+		"livestreams": [{"id": "stream-1", "title": "Fixture", "is_live": true, "chat": {"recent_messages": messages, "recent_rants": []}}],
+	})
+
+
+func _event_count(changes: RumbleChangeSet) -> int:
+	return changes.chat_messages.size() + changes.rants.size() + changes.followers.size() + changes.subscribers.size() + changes.gifted_subscriptions.size()
+
+
+func _transition_count(changes: RumbleChangeSet, kind: String) -> int:
+	return changes.stream_transitions.filter(func(item: RumbleStreamTransition) -> bool: return item.kind == kind).size()
+
+
+func _read(name: String) -> String:
+	return FileAccess.get_file_as_string("%s/%s" % [FIXTURE_ROOT, name])
+
+
+func _check(condition: bool, label: String) -> void:
+	_checks += 1
+	if condition:
+		print("PASS: " + label)
+	else:
+		_failures.append(label)
+
+
+func _finish() -> void:
+	if _failures.is_empty():
+		print("REDOT RUMBLER MS001 PASS: %d checks" % _checks)
+		quit(0)
+		return
+	for failure: String in _failures:
+		push_error("REDOT RUMBLER MS001 FAIL: " + failure)
+	print("REDOT RUMBLER MS001 FAILED: %d of %d checks" % [_failures.size(), _checks])
+	quit(1)

@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "project": "redot-rumbler",
+  "direct_donors": [
+    {
+      "project": "dominicbytes/Rumble-Bytebot",
+      "commit": "b7655e65e3d428786d5bb90c382f1aa8692f8a98",
+      "license": "MIT",
+      "use": "Rumble parser, silent-baseline, bounded fingerprint, overlap/reorder, counter/reset, stream transition, redaction, and fixture behavior"
+    },
+    {
+      "project": "dominicbytes/redot-kicker",
+      "commit": "72a3abb747cac0e148352c04a88a53e0313bd72b",
+      "license": "MIT",
+      "use": "Redot addon shell, bounded HTTP/error/cancellation patterns, session isolation, OS-vault protocol/client/helpers, editor/runtime UI, tests, packaging conventions"
+    }
+  ],
+  "indirect_lineage": [
+    {
+      "project": "dominicbytes/redot-tuber",
+      "commit": "029c22d7d5a5a68abacd8d12aabfea0b8e6536d8",
+      "license": "MIT",
+      "use": "Origin of generic foundations carried through Redot Kicker"
+    },
+    {
+      "project": "dominicbytes/twitcher and kanimaru/twitcher",
+      "license": "MIT",
+      "use": "Product/editor inspiration and indirect lineage only; no direct Rumbler source adaptation"
+    }
+  ],
+  "adaptations": [
+    {
+      "source": "Rumble-Bytebot/src/Rumble.Bot/RumbleParser.cs and RumbleRuntime.cs",
+      "target": "addons/redot-rumbler/parsing/rumble_payload_parser.gd and rumble_snapshot_differ.gd",
+      "disposition": "Reimplemented in typed GDScript; expanded to complete documented models, multiple streams, counter reset uncertainty, persisted hash TTL, 50-item saturation, and unknown-field paths; removed raw JSON output"
+    },
+    {
+      "source": "Rumble-Bytebot tests/Rumble.Bot.Tests/RumbleTests.cs",
+      "target": "tests/fixtures/ms001 and tests/run_ms001.gd",
+      "disposition": "Expanded synthetic characterization/replacement fixtures; no private response or credential copied"
+    },
+    {
+      "source": "redot-kicker credential protocol/client/session foundations",
+      "target": "addons/redot-rumbler/auth and persistence",
+      "disposition": "Adapted to RRCH/1, API-URL semantics, Rumbler namespaces, one credential slot, non-secret descriptor, and bounded differ state"
+    },
+    {
+      "source": "redot-kicker native/credential-helper",
+      "target": "native/credential-helper",
+      "disposition": "Adapted to RRCH/1, RedotRumbler Credential Manager prefix, org.redotengine.redot_rumbler Secret Service schema, and Rumble API URL labels"
+    },
+    {
+      "source": "redot-kicker HTTP transport and client lifecycle patterns",
+      "target": "addons/redot-rumbler/transport and rumble_live_client.gd",
+      "disposition": "Reduced to one read-only single-flight GET; added official-host/no-redirect policy, completion scheduling, source-window diagnostics, and last-good-snapshot behavior"
+    },
+    {
+      "source": "redot-kicker plugin/editor/runtime UI patterns",
+      "target": "addons/redot-rumbler/plugin.gd, editor, and ui",
+      "disposition": "Adapted to runtime private-URL entry, read-only capability disclosure, and Rumble API management"
+    }
+  ],
+  "rejected": [
+    "Streamer.bot hosting/runtime",
+    "C# and Windows WinHTTP COM",
+    "Windows DPAPI persistence",
+    "raw JSON events or persisted raw responses",
+    "scraping, cookies, and private frontend routes",
+    "invented outbound chat, moderation, rewards, or raids",
+    "shared cross-platform streaming runtime"
+  ]
+}

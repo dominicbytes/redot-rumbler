@@ -1,0 +1,71 @@
+{
+  "now": 1786453260,
+  "type": "user",
+  "user_id": 1001,
+  "channel_id": null,
+  "since": "2026-08-11T10:10:00Z",
+  "max_num_results": 50,
+  "followers": {
+    "num_followers": 11,
+    "num_followers_total": 21,
+    "latest_follower": {"username": "Erin", "followed_on": "2026-08-11T10:12:00Z"},
+    "recent_followers": [
+      {"username": "Erin", "followed_on": "2026-08-11T10:12:00Z"},
+      {"username": "Alice", "followed_on": "2026-08-11T10:00:00Z"}
+    ]
+  },
+  "subscribers": {
+    "num_subscribers": 3,
+    "latest_subscriber": {"username": "Frank", "amount_cents": 500, "amount_dollars": 5, "subscribed_on": "2026-08-11T10:12:30Z"},
+    "recent_subscribers": [
+      {"username": "Frank", "amount_cents": 500, "amount_dollars": 5, "subscribed_on": "2026-08-11T10:12:30Z"},
+      {"username": "Carol", "amount_cents": 500, "amount_dollars": 5, "subscribed_on": "2026-08-11T10:05:00Z"}
+    ]
+  },
+  "gifted_subs": {
+    "num_gifted_subs": 2,
+    "latest_gifted_sub": {"total_gifts": 2, "gift_type": "rumble", "remaining_gifts": 0, "video_id": 7001, "purchased_by": "Grace"},
+    "recent_gifted_subs": [
+      {"total_gifts": 2, "gift_type": "rumble", "remaining_gifts": 0, "video_id": 7001, "purchased_by": "Grace"},
+      {"total_gifts": 1, "gift_type": "rumble", "remaining_gifts": 1, "video_id": 7001, "purchased_by": "Dana"}
+    ]
+  },
+  "livestreams": [
+    {
+      "id": "stream-1",
+      "title": "Fixture Live Updated",
+      "created_on": "2026-08-11T09:30:00Z",
+      "is_live": true,
+      "categories": {"primary": {"slug": "gaming", "title": "Gaming"}, "secondary": {"slug": "simulators", "title": "Simulators"}},
+      "stream_key": "SYNTHETIC_REMOVAL_MARKER_2",
+      "likes": 4,
+      "dislikes": 1,
+      "watching_now": 23,
+      "chat": {
+        "latest_message": {"username": "ViewerC", "badges": ["admin"], "text": "new", "created_on": "2026-08-11T10:12:00Z"},
+        "recent_messages": [
+          {"username": "ViewerC", "badges": ["admin"], "text": "new", "created_on": "2026-08-11T10:12:00Z"},
+          {"username": "ViewerA", "badges": ["premium"], "text": "first", "created_on": "2026-08-11T10:10:00Z"}
+        ],
+        "latest_rant": {"username": "Supporter2", "badges": [], "text": "again", "created_on": "2026-08-11T10:12:10Z", "expires_on": "2026-08-11T10:14:10Z", "amount_cents": 100, "amount_dollars": 1},
+        "recent_rants": [
+          {"username": "Supporter2", "badges": [], "text": "again", "created_on": "2026-08-11T10:12:10Z", "expires_on": "2026-08-11T10:14:10Z", "amount_cents": 100, "amount_dollars": 1},
+          {"username": "Supporter", "badges": ["whale-blue"], "text": "great", "created_on": "2026-08-11T10:11:00Z", "expires_on": "2026-08-11T10:13:00Z", "amount_cents": 250, "amount_dollars": 2.5}
+        ]
+      },
+      "future_metric": 42
+    },
+    {
+      "id": "stream-2",
+      "title": "Second Fixture Live",
+      "created_on": "2026-08-11T10:12:00Z",
+      "is_live": true,
+      "categories": {"primary": {"slug": "gaming", "title": "Gaming"}, "secondary": null},
+      "stream_key": "SYNTHETIC_SECOND_STREAM_MARKER",
+      "likes": 0,
+      "dislikes": 0,
+      "watching_now": 2,
+      "chat": {"latest_message": null, "recent_messages": [], "latest_rant": null, "recent_rants": []}
+    }
+  ]
+}

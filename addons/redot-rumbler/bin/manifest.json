@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "protocol": "RRCH/1",
+  "helpers": {
+    "windows-x86_64": {
+      "path": "windows/x86_64/redot-rumbler-credential-helper.exe",
+      "status": "built_and_windows_credential_manager_tested",
+      "sha256": "7bc75c6b159d8eb18b3e9d6e72253c0d4cabc182db203260a9606fc6ce129c2e"
+    },
+    "linux-x86_64": {
+      "path": "linux/x86_64/redot-rumbler-credential-helper",
+      "status": "built_and_protocol_tested_secret_service_desktop_certification_pending",
+      "sha256": "e6ecfea56533868d3bb732993e8aee470170be7c03d3abcf117666a03d60abe4"
+    }
+  }
+}

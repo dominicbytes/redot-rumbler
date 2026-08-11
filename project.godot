@@ -1,0 +1,24 @@
+; redot-rumbler development and verification project.
+; Runtime users install only addons/redot-rumbler in their own project.
+
+config_version=5
+
+[application]
+
+config/name="Redot Rumbler Development"
+config/features=PackedStringArray("4.5")
+run/main_scene="res://examples/basic_connection.tscn"
+
+[display]
+
+window/size/viewport_width=960
+window/size/viewport_height=540
+
+[editor_plugins]
+
+enabled=PackedStringArray("redot-rumbler")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

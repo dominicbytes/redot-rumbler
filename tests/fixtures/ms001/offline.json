@@ -1,0 +1,12 @@
+{
+  "now": 1786453320,
+  "type": "user",
+  "user_id": 1001,
+  "channel_id": null,
+  "since": "2026-08-11T10:12:00Z",
+  "max_num_results": 50,
+  "followers": {"num_followers": 11, "num_followers_total": 21, "latest_follower": null, "recent_followers": []},
+  "subscribers": {"num_subscribers": 1, "latest_subscriber": null, "recent_subscribers": []},
+  "gifted_subs": {"num_gifted_subs": 2, "latest_gifted_sub": null, "recent_gifted_subs": []},
+  "livestreams": []
+}

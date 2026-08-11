@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+*.exe binary
+*.xlsx binary
+addons/redot-rumbler/bin/linux/x86_64/redot-rumbler-credential-helper binary
+tests/fixtures/rrch_*.txt whitespace=-blank-at-eof

@@ -1,12 +1,13 @@
 # Redot Rumbler
 
-Redot Rumbler is a standalone typed-GDScript addon for connecting a Redot game to a consenting creator's Rumble Live Stream API. It targets Redot 26.2 on Windows and Linux x86-64 first.
+Redot Rumbler is a standalone typed-GDScript addon for connecting a Redot game to a consenting creator's Rumble Live Stream API. It targets Redot 26.3-rc.1 on Windows and Linux x86-64 first. Windows 26.3 runtime regression tests cover deduplication, persistence and live-state transitions; this is not editor/export certification. The independently reproduced 26.3 headless-editor crash and clean Windows/Linux exported-game checks remain release gates.
 
 The addon is intentionally **read-only and polling-based**. It covers every field documented by Rumble Live Stream API v1.1: identity, followers, subscribers, gifted subscriptions, all returned livestreams, title/categories/live state, viewers, reactions, chat, rants, badges, timestamps, and amounts. Rumble does not document outbound chat, moderation, raids, or programmable reward routes, so Redot Rumbler identifies those capabilities as unavailable instead of emulating them with scraping or private APIs.
 
 This repository is not a Twitcher fork and will not be merged into Twitcher. Its interaction scope was informed by [dominicbytes/redot-twitcher](https://github.com/dominicbytes/twitcher), whose original Godot project is [kanimaru/twitcher](https://github.com/kanimaru/twitcher). Rumble-specific behavior was adapted from the MIT-licensed [dominicbytes/Rumble-Bytebot](https://github.com/dominicbytes/Rumble-Bytebot). Exact lineage is recorded in [`docs/lineage/reuse-manifest.json`](docs/lineage/reuse-manifest.json).
 
 ## Current status
+
 
 The source implementation is complete through the repository-ready development boundary:
 
@@ -61,9 +62,12 @@ The default interval is five seconds and the enforced floor is two seconds. The 
 
 ## Development
 
-Set `REDOT_BIN` to Redot `26.2.stable.official.4f5b14aba`, then run:
+Set `REDOT_BIN` to Redot `26.3.rc.1.official.704b10a8e` and verify `--version`. These script commands require an initialized class/import cache. Fresh headless-editor initialization currently hits the separately reproduced 26.3 crash; the recorded script runs used an existing generated cache, so fresh-clone import is not certified.
 
 ```powershell
+& $env:REDOT_BIN --version
+& $env:REDOT_BIN --headless --path . --script res://addons/redot-rumbler/tests/run_helper_export_paths.gd --quit-after 1200
+& $env:REDOT_BIN --headless --path . --script res://tests/run_up03.gd --quit-after 1200
 & $env:REDOT_BIN --headless --path . --script res://tests/run_ms001.gd --quit-after 1200
 & $env:REDOT_BIN --headless --path . --script res://tests/run_core_suite.gd --quit-after 1200
 & $env:REDOT_BIN --headless --path . --script res://tests/run_http_transport_suite.gd --quit-after 2000

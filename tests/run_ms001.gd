@@ -64,10 +64,11 @@ func _run() -> void:
 	_check(restored.load_state(saved_state), "bounded hash/counter/stream state restores from schema v1")
 	var restart_changes := restored.process(update_result.snapshot, 1008)
 	_check(_event_count(restart_changes) == 0 and restart_changes.stream_transitions.is_empty(), "restart state suppresses already observed items")
+	var state_after_restart := restored.state_dictionary()
 
 	var malformed := _parser.parse_json(_read("malformed.json"))
 	_check(not malformed.is_success() and malformed.error.category == "parse", "malformed JSON is rejected with a typed parse error")
-	_check(restored.state_dictionary() == saved_state, "rejected payload does not replace last good differ state")
+	_check(restored.state_dictionary() == state_after_restart, "rejected payload does not replace last good differ state")
 	var minimal := _parser.parse_json(_read("minimal.json"))
 	_check(minimal.is_success() and minimal.snapshot.livestreams.is_empty(), "documented optional and offline fields may be missing")
 

@@ -39,6 +39,8 @@ var _parser := RumblePayloadParser.new()
 var _differ := RumbleSnapshotDiffer.new()
 var _cancellation: RumbleCancellationToken = null
 var _generation: int = 0
+var _saved_state: Dictionary = {}
+var _saved_descriptor: Dictionary = {}
 
 
 func configure(
@@ -76,8 +78,8 @@ func configure(
 	_transport.response_body_limit_bytes = config.response_body_limit_bytes
 	_differ.replay_history_on_first_poll = config.replay_history_on_first_poll
 	var saved_state: Dictionary = _state_store.load_state(_session_slot)
-	if not saved_state.is_empty():
-		_differ.load_state(saved_state)
+	if not saved_state.is_empty() and _differ.load_state(saved_state):
+		_saved_state = _differ.state_dictionary()
 	_set_state("configured", "configuration_valid")
 	return null
 
@@ -99,6 +101,7 @@ func connect_api_url(api_url: String) -> RumbleApiError:
 		return save_error
 	_api_url = api_url
 	connected_descriptor = descriptor
+	_saved_descriptor = _descriptor_contents(descriptor)
 	_set_state("connected", "credential_stored")
 	credential_connected.emit(connected_descriptor, false)
 	return null
@@ -124,6 +127,7 @@ func restore_connection() -> RumbleApiError:
 	_api_url = read.secret
 	read.clear_secret()
 	connected_descriptor = descriptor
+	_saved_descriptor = _descriptor_contents(descriptor)
 	_config.poll_interval_seconds = descriptor.poll_interval_seconds
 	_config.replay_history_on_first_poll = descriptor.replay_history_on_first_poll
 	_differ.replay_history_on_first_poll = descriptor.replay_history_on_first_poll
@@ -199,6 +203,8 @@ func clear_local_data() -> RumbleApiError:
 	last_success_unix = 0
 	consecutive_failures = 0
 	_differ.clear()
+	_saved_state.clear()
+	_saved_descriptor.clear()
 	_set_state("configured", "local_data_cleared")
 	credential_cleared.emit()
 	return first_error
@@ -252,18 +258,26 @@ func _apply_snapshot(snapshot: RumbleSnapshot) -> void:
 	var changes := _differ.process(snapshot)
 	last_snapshot = snapshot
 	last_success_unix = int(Time.get_unix_time_from_system())
-	var state_error: RumbleApiError = _state_store.save(_session_slot, _differ.state_dictionary())
-	if state_error != null:
-		error_occurred.emit(state_error)
+	var current_state := _differ.state_dictionary()
+	if current_state != _saved_state:
+		var state_error: RumbleApiError = _state_store.save(_session_slot, current_state)
+		if state_error != null:
+			error_occurred.emit(state_error)
+		else:
+			_saved_state = current_state
 	if connected_descriptor != null:
 		connected_descriptor.response_type = snapshot.response_type
 		connected_descriptor.user_id = snapshot.user_id
 		connected_descriptor.channel_id = snapshot.channel_id
 		connected_descriptor.poll_interval_seconds = _config.poll_interval_seconds
 		connected_descriptor.replay_history_on_first_poll = _config.replay_history_on_first_poll
-		var descriptor_error: RumbleApiError = _descriptor_store.save(connected_descriptor)
-		if descriptor_error != null:
-			error_occurred.emit(descriptor_error)
+		var descriptor_contents := _descriptor_contents(connected_descriptor)
+		if descriptor_contents != _saved_descriptor:
+			var descriptor_error: RumbleApiError = _descriptor_store.save(connected_descriptor)
+			if descriptor_error != null:
+				error_occurred.emit(descriptor_error)
+			else:
+				_saved_descriptor = descriptor_contents
 	snapshot_updated.emit(snapshot)
 	for item: RumbleChatMessage in changes.chat_messages:
 		chat_message_received.emit(item)
@@ -299,6 +313,12 @@ func _new_descriptor(target: String) -> RumbleSessionDescriptor:
 	descriptor.poll_interval_seconds = _config.poll_interval_seconds
 	descriptor.replay_history_on_first_poll = _config.replay_history_on_first_poll
 	return descriptor
+
+
+func _descriptor_contents(descriptor: RumbleSessionDescriptor) -> Dictionary:
+	var contents := descriptor.to_dictionary()
+	contents.erase("saved_at_unix")
+	return contents
 
 
 func _set_state(value: String, reason: String) -> void:

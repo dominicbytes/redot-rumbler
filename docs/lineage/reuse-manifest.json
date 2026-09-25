@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "additional_lineage_notes": "helper-export-reuse.md",
   "project": "redot-rumbler",
   "direct_donors": [
     {

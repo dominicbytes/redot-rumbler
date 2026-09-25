@@ -2,6 +2,7 @@ class_name RumbleSnapshotDiffer
 extends RefCounted
 
 const STATE_SCHEMA_VERSION: int = 1
+const MAX_INACTIVE_STREAM_COLLECTIONS: int = 64
 
 var fingerprint_capacity: int = 250
 var fingerprint_ttl_seconds: int = 7 * 24 * 60 * 60
@@ -27,10 +28,14 @@ func process(snapshot: RumbleSnapshot, observed_at_unix: int = 0) -> RumbleChang
 	_process_people("subscribers", snapshot.recent_subscribers, changes.subscribers, emit_items, now_unix)
 	_process_gifts(snapshot.recent_gifted_subscriptions, changes.gifted_subscriptions, emit_items, now_unix)
 	var chat_and_rant_count := 0
+	var active_collections: Dictionary = {}
 	for stream: RumbleLivestream in snapshot.livestreams:
+		active_collections["chat:%s" % stream.id] = true
+		active_collections["rants:%s" % stream.id] = true
 		chat_and_rant_count += stream.recent_messages.size() + stream.recent_rants.size()
 		_process_messages("chat:%s" % stream.id, stream.recent_messages, changes.chat_messages, emit_items, now_unix)
 		_process_rants("rants:%s" % stream.id, stream.recent_rants, changes.rants, emit_items, now_unix)
+	_prune_inactive_collections(active_collections, now_unix)
 
 	if chat_and_rant_count >= snapshot.max_num_results:
 		changes.possible_gaps.append({
@@ -145,9 +150,14 @@ func _accept(collection: String, fingerprint: String, now_unix: int) -> bool:
 		return false
 	_purge(collection, now_unix)
 	var seen: Dictionary = _collection_seen_at.get(collection, {})
-	if seen.has(fingerprint):
-		return false
 	var order: Array = _collection_order.get(collection, [])
+	if seen.has(fingerprint):
+		seen[fingerprint] = maxi(int(seen[fingerprint]), now_unix)
+		order.erase(fingerprint)
+		order.append(fingerprint)
+		_collection_order[collection] = order
+		_collection_seen_at[collection] = seen
+		return false
 	order.append(fingerprint)
 	seen[fingerprint] = now_unix
 	while order.size() > fingerprint_capacity:
@@ -155,6 +165,26 @@ func _accept(collection: String, fingerprint: String, now_unix: int) -> bool:
 	_collection_order[collection] = order
 	_collection_seen_at[collection] = seen
 	return true
+
+
+func _prune_inactive_collections(active: Dictionary, now_unix: int) -> void:
+	var inactive: Array[Dictionary] = []
+	for collection: String in _collection_order.keys():
+		if not (collection.begins_with("chat:") or collection.begins_with("rants:")) or active.has(collection):
+			continue
+		_purge(collection, now_unix)
+		if not _collection_order.has(collection):
+			continue
+		var order: Array = _collection_order[collection]
+		var seen: Dictionary = _collection_seen_at[collection]
+		inactive.append({"name": collection, "last_seen": int(seen.get(order[-1], 0))})
+	inactive.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a.last_seen == b.last_seen:
+			return a.name < b.name
+		return a.last_seen < b.last_seen)
+	for index: int in maxi(0, inactive.size() - MAX_INACTIVE_STREAM_COLLECTIONS):
+		_collection_order.erase(inactive[index].name)
+		_collection_seen_at.erase(inactive[index].name)
 
 
 func _purge(collection: String, now_unix: int) -> void:
@@ -169,8 +199,12 @@ func _purge(collection: String, now_unix: int) -> void:
 			break
 		order.pop_front()
 		seen.erase(fingerprint)
-	_collection_order[collection] = order
-	_collection_seen_at[collection] = seen
+	if order.is_empty():
+		_collection_order.erase(collection)
+		_collection_seen_at.erase(collection)
+	else:
+		_collection_order[collection] = order
+		_collection_seen_at[collection] = seen
 
 
 func _compare_counters(current: Dictionary, changes: RumbleChangeSet, first_poll: bool) -> void:
@@ -203,6 +237,8 @@ func _compare_streams(streams: Array[RumbleLivestream], changes: RumbleChangeSet
 				var previous: Dictionary = _previous_streams[stream_id]
 				if bool(previous.get("is_live", false)) and not stream.is_live:
 					changes.stream_transitions.append(_transition("ended", stream, false, "explicit_offline"))
+				elif not bool(previous.get("is_live", false)) and stream.is_live:
+					changes.stream_transitions.append(_transition("started", stream, false, "existing_stream_went_live"))
 				else:
 					changes.stream_transitions.append(_transition("updated", stream, false, "snapshot_changed"))
 		for stream_id: Variant in _previous_streams:

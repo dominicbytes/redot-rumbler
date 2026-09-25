@@ -5,6 +5,7 @@ extends RefCounted
 ## whose generic helper client derives from redot-tuber (MIT).
 const DEFAULT_TIMEOUT_MSEC: int = 15000
 const MAX_RESPONSE_BYTES: int = 16 * 1024
+const HelperPaths = preload("res://addons/redot-rumbler/auth/credential_helper_paths.gd")
 
 var helper_path_override: String = ""
 var timeout_msec: int = DEFAULT_TIMEOUT_MSEC
@@ -36,15 +37,7 @@ func delete(target: String, cancellation: RumbleCancellationToken = null) -> Rum
 func resolved_helper_path() -> String:
 	if not helper_path_override.is_empty():
 		return ProjectSettings.globalize_path(helper_path_override) if helper_path_override.begins_with("res://") else helper_path_override
-	var relative := ""
-	match OS.get_name():
-		"Windows":
-			relative = "res://addons/redot-rumbler/bin/windows/x86_64/redot-rumbler-credential-helper.exe"
-		"Linux":
-			relative = "res://addons/redot-rumbler/bin/linux/x86_64/redot-rumbler-credential-helper"
-		_:
-			return ""
-	return ProjectSettings.globalize_path(relative)
+	return HelperPaths.runtime_path(OS.has_feature("editor"), OS.get_name(), Engine.get_architecture_name(), OS.get_executable_path())
 
 
 func _invoke(command: String, target: String, secret: String, cancellation: RumbleCancellationToken) -> RumbleCredentialResult:

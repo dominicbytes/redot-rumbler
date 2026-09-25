@@ -3,19 +3,26 @@ extends EditorPlugin
 
 const ClientClass = preload("res://addons/redot-rumbler/rumble_live_client.gd")
 const SetupDialogClass = preload("res://addons/redot-rumbler/editor/rumble_setup_dialog.gd")
+const CredentialExportClass = preload("res://addons/redot-rumbler/editor/credential_helper_export.gd")
 const MENU_LABEL: String = "Redot Rumbler Setup"
 
 var _setup_dialog: AcceptDialog = null
+var _credential_export: EditorExportPlugin = null
 
 
 func _enter_tree() -> void:
 	add_custom_type("RumbleLiveClient", "Node", ClientClass, null)
+	_credential_export = CredentialExportClass.new()
+	add_export_plugin(_credential_export)
 	add_tool_menu_item(MENU_LABEL, _show_setup)
 
 
 func _exit_tree() -> void:
 	remove_tool_menu_item(MENU_LABEL)
 	remove_custom_type("RumbleLiveClient")
+	if _credential_export != null:
+		remove_export_plugin(_credential_export)
+		_credential_export = null
 	if is_instance_valid(_setup_dialog):
 		_setup_dialog.queue_free()
 	_setup_dialog = null

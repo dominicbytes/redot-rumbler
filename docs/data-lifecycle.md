@@ -11,7 +11,7 @@ The helper receives its request over stdin. The URL is never a command-line argu
 - `redot-rumbler/sessions/<slot>.json`: schema version, non-secret vault record target, publisher/application/slot IDs, polling preferences, and minimal last identity summary;
 - `redot-rumbler/state/<slot>.json`: baseline flag, versioned SHA-256 fingerprints with observed timestamps, counter baselines, and stream-state summaries.
 
-No API URL, stream key, raw response, chat text, username history, rant text, or monetary-event history is written there. Fingerprints are bounded per collection (default 250) and expire after seven days.
+No API URL, stream key, raw response, chat text, username history, rant text, or monetary-event history is written there. Fingerprints are bounded per collection (default 250) and expire seven days after their last observation. At most 64 inactive per-stream chat/rant collections are retained; older inactive collections are evicted first. Reappearing streams whose collections were evicted may emit still-recent items again. State is saved when its contents change, including refreshed last-observed times, so restart deduplication remains durable; unchanged state and descriptor polls do not rewrite their files.
 
 ## Memory
 

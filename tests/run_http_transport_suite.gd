@@ -32,6 +32,7 @@ func _run() -> void:
 	await _test_status_and_redirect_policy(transport)
 	await _test_cancellation(transport)
 	await _test_limits(transport)
+	await _test_polling_lifecycle()
 	transport.queue_free()
 	_close_server()
 	await process_frame
@@ -98,6 +99,52 @@ func _test_limits(transport: RumbleHttpTransport) -> void:
 	_check(insecure.is_completed and insecure.response.error.category == "invalid_request", "non-loopback plaintext HTTP is rejected before network access")
 	var offsite := transport.request("https://example.com/unsafe")
 	_check(offsite.is_completed and offsite.response.error.category == "invalid_request", "non-Rumble HTTPS host is rejected before network access")
+
+
+func _test_polling_lifecycle() -> void:
+	var config := RumbleClientConfig.new()
+	config.publisher_id = "polling-publisher"
+	config.application_id = "polling-app"
+	config.poll_interval_seconds = 2.0
+	var transport := RumbleHttpTransport.new()
+	transport.allow_loopback_http_for_tests = true
+	var client := RumbleLiveClient.new()
+	root.add_child(client)
+	var descriptors := RumbleSessionDescriptorStore.new("res://.test-output/polling/sessions")
+	var states := RumbleStateStore.new("res://.test-output/polling/state")
+	_check(client.configure(config, "primary", null, descriptors, states, transport) == null, "poll-loop client configures")
+	client.connected_descriptor = RumbleSessionDescriptor.new()
+	client.connected_descriptor.session_slot = "primary"
+	client._api_url = _url("/polling?key=SECRETKEY1")
+	var snapshots: Array[RumbleSnapshot] = []
+	client.snapshot_updated.connect(func(value: RumbleSnapshot) -> void: snapshots.append(value))
+	_check(client.start_polling() == null, "public start_polling begins the session loop")
+	var deadline := Time.get_ticks_msec() + 12000
+	while snapshots.size() < 3 and Time.get_ticks_msec() < deadline:
+		_service_server()
+		await process_frame
+	_check(snapshots.size() >= 3, "session token survives several completed public polling cycles")
+	var token := client._cancellation
+	_check(token.cancelled.get_connections().is_empty(), "normal completion removes cancellation callback before the next poll")
+	_release_slow = false
+	client._api_url = _url("/slow?key=SECRETKEY1")
+	deadline = Time.get_ticks_msec() + 5000
+	while transport.active_count() == 0 and Time.get_ticks_msec() < deadline:
+		_service_server()
+		await process_frame
+	_check(transport.active_count() == 1, "next poll holds a current in-flight request")
+	if transport.active_count() == 1:
+		var ticket: RumbleHttpTicket = transport._active.values()[0].ticket
+		token.cancel("fixture token stop")
+		await process_frame
+		_check(ticket.is_completed and ticket.is_cancelled and ticket.response.error.category == "cancelled", "session token cancels the current request after prior completions")
+		_check(transport.active_count() == 0 and token.cancelled.get_connections().is_empty(), "cancellation releases both active request and callback")
+	_release_slow = true
+	client.stop_polling("polling_fixture_complete")
+	client.queue_free()
+	await process_frame
+	states.delete_state("primary")
+	descriptors.delete_descriptor("primary")
 
 
 func _drive_until_completed(tickets: Array, max_frames: int = MAX_FRAMES) -> void:

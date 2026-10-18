@@ -31,16 +31,18 @@ func request(url: String, cancellation: RumbleCancellationToken = null) -> Rumbl
 	http.accept_gzip = true
 	http.use_threads = false
 	add_child(http)
-	_active[ticket.id] = {"ticket": ticket, "http": http, "started_at": Time.get_ticks_msec(), "cancellation": cancellation}
+	var cancel_callback := _on_cancel_requested.bind(ticket.id)
+	_active[ticket.id] = {"ticket": ticket, "http": http, "started_at": Time.get_ticks_msec(), "cancellation": cancellation, "cancel_callback": cancel_callback}
 	http.request_completed.connect(_on_request_completed.bind(ticket.id), CONNECT_ONE_SHOT)
 	if cancellation != null:
-		cancellation.cancelled.connect(_on_cancel_requested.bind(ticket.id), CONNECT_ONE_SHOT)
+		cancellation.cancelled.connect(cancel_callback)
 		if cancellation.is_cancelled():
 			_on_cancel_requested(cancellation.reason(), ticket.id)
 			return ticket
 	request_started.emit(ticket.id)
 	var start_error := http.request(url, PackedStringArray(["Accept: application/json", "User-Agent: Redot-Rumbler/0.1"]), HTTPClient.METHOD_GET)
 	if start_error != OK:
+		_disconnect_cancellation(_active[ticket.id])
 		_active.erase(ticket.id)
 		http.queue_free()
 		var start_failure := RumbleApiError.from_transport(start_error, "Unable to start Rumble Live Stream API request")
@@ -62,6 +64,7 @@ func _on_request_completed(result: int, status_code: int, headers: PackedStringA
 	if not _active.has(ticket_id):
 		return
 	var item: Dictionary = _active[ticket_id]
+	_disconnect_cancellation(item)
 	_active.erase(ticket_id)
 	var http: HTTPRequest = item.http
 	if is_instance_valid(http):
@@ -89,6 +92,7 @@ func _on_cancel_requested(reason: String, ticket_id: int) -> void:
 	if not _active.has(ticket_id):
 		return
 	var item: Dictionary = _active[ticket_id]
+	_disconnect_cancellation(item)
 	_active.erase(ticket_id)
 	var http: HTTPRequest = item.http
 	if is_instance_valid(http):
@@ -100,6 +104,13 @@ func _on_cancel_requested(reason: String, ticket_id: int) -> void:
 	response.error = RumbleApiError.from_transport(ERR_SKIP, "Rumble request cancelled")
 	ticket._complete(response)
 	_emit_idle()
+
+
+func _disconnect_cancellation(item: Dictionary) -> void:
+	var cancellation: RumbleCancellationToken = item.cancellation
+	var callback: Callable = item.cancel_callback
+	if cancellation != null and cancellation.cancelled.is_connected(callback):
+		cancellation.cancelled.disconnect(callback)
 
 
 func _complete_immediate(ticket: RumbleHttpTicket, error: RumbleApiError) -> void:

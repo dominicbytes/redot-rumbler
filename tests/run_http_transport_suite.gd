@@ -94,6 +94,9 @@ func _test_limits(transport: RumbleHttpTransport) -> void:
 	var oversized := transport.request(_url("/oversized"))
 	await _drive_until_completed([oversized])
 	_check(oversized.response.request_result == HTTPRequest.RESULT_BODY_SIZE_LIMIT_EXCEEDED, "oversized response is rejected by the engine body limit")
+	for authority: String in ["rumble.com:", "rumble.com:99999", "rumble.com:443 "]:
+		var invalid := transport.request("https://" + authority + "/-livestream-api/get-data?key=SECRETKEY1")
+		_check(invalid.is_completed and invalid.response.error.category == "invalid_request" and not invalid.response.error.transient, "malformed credential URL never reaches HTTPRequest or retries")
 	var insecure := transport.request("http://example.com/unsafe")
 	_check(insecure.is_completed and insecure.response.error.category == "invalid_request", "non-loopback plaintext HTTP is rejected before network access")
 	var offsite := transport.request("https://example.com/unsafe")

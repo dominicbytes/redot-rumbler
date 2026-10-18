@@ -44,7 +44,7 @@ func request(url: String, cancellation: RumbleCancellationToken = null) -> Rumbl
 		_active.erase(ticket.id)
 		http.queue_free()
 		var start_failure := RumbleApiError.from_transport(start_error, "Unable to start Rumble Live Stream API request")
-		start_failure.transient = true
+		start_failure.transient = start_error != ERR_INVALID_PARAMETER
 		_complete_immediate(ticket, start_failure)
 	return ticket
 

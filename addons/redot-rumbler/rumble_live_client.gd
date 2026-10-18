@@ -232,7 +232,7 @@ func diagnostic_summary() -> Dictionary:
 func _poll_loop(generation: int) -> void:
 	while generation == _generation and connection_state in ["polling", "backoff"]:
 		var error := await poll_once()
-		if generation != _generation:
+		if generation != _generation or (error != null and error.category == "cancelled"):
 			return
 		var delay_seconds := RumblePollPolicy.interval(_config.poll_interval_seconds)
 		if error == null:

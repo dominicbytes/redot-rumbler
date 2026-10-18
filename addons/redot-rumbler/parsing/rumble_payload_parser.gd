@@ -16,7 +16,11 @@ const MESSAGE_FIELDS: Array[String] = ["username", "badges", "text", "created_on
 const RANT_FIELDS: Array[String] = ["username", "badges", "text", "created_on", "expires_on", "amount_cents", "amount_dollars"]
 
 
+var _schema_warnings: PackedStringArray = PackedStringArray()
+
+
 func parse_json(json_text: String) -> RumbleParseResult:
+	_schema_warnings.clear()
 	var result := RumbleParseResult.new()
 	if json_text.to_utf8_buffer().size() > 2 * 1024 * 1024:
 		result.error = RumbleApiError.custom("body_limit", "Rumble response exceeds the parser limit")
@@ -40,33 +44,36 @@ func parse_json(json_text: String) -> RumbleParseResult:
 		return result
 
 	var snapshot := RumbleSnapshot.new()
-	snapshot.now_unix = int(root.get("now", 0))
-	snapshot.response_type = str(root.get("type", ""))
-	snapshot.user_id = _id(root.get("user_id", ""))
-	snapshot.channel_id = _id(root.get("channel_id", ""))
-	snapshot.since = str(root.get("since", "")) if root.get("since", null) != null else ""
-	snapshot.max_num_results = clampi(int(root.get("max_num_results", 50)), 1, 50)
+	snapshot.now_unix = _int(root.get("now", 0), 0, "now")
+	snapshot.response_type = _str(root.get("type", ""), "", "type")
+	snapshot.user_id = _id(root.get("user_id", ""), "user_id")
+	snapshot.channel_id = _id(root.get("channel_id", ""), "channel_id")
+	snapshot.since = _str(root.get("since", ""), "", "since") if root.get("since", null) != null else ""
+	snapshot.max_num_results = clampi(_int(root.get("max_num_results", 50), 50, "max_num_results"), 1, 50)
 
 	var followers: Dictionary = _dictionary(root.get("followers", {}))
-	snapshot.follower_count = int(followers.get("num_followers", 0))
-	snapshot.follower_total_count = int(followers.get("num_followers_total", snapshot.follower_count))
-	snapshot.latest_follower = _parse_person(_dictionary(followers.get("latest_follower", {})), "follow")
-	snapshot.recent_followers = _parse_people(_array(followers.get("recent_followers", [])), "follow")
+	snapshot.follower_count = _int(followers.get("num_followers", 0), 0, "followers.num_followers")
+	snapshot.follower_total_count = _int(followers.get("num_followers_total", snapshot.follower_count), snapshot.follower_count, "followers.num_followers_total")
+	snapshot.latest_follower = _parse_person(_dictionary(followers.get("latest_follower", {})), "follow", "followers.latest_follower")
+	snapshot.recent_followers = _parse_people(_array(followers.get("recent_followers", [])), "follow", "followers.recent_followers[]")
 
 	var subscribers: Dictionary = _dictionary(root.get("subscribers", {}))
-	snapshot.subscriber_count = int(subscribers.get("num_subscribers", 0))
-	snapshot.latest_subscriber = _parse_person(_dictionary(subscribers.get("latest_subscriber", {})), "subscription")
-	snapshot.recent_subscribers = _parse_people(_array(subscribers.get("recent_subscribers", [])), "subscription")
+	snapshot.subscriber_count = _int(subscribers.get("num_subscribers", 0), 0, "subscribers.num_subscribers")
+	snapshot.latest_subscriber = _parse_person(_dictionary(subscribers.get("latest_subscriber", {})), "subscription", "subscribers.latest_subscriber")
+	snapshot.recent_subscribers = _parse_people(_array(subscribers.get("recent_subscribers", [])), "subscription", "subscribers.recent_subscribers[]")
 
 	var gifts: Dictionary = _dictionary(root.get("gifted_subs", {}))
-	snapshot.gifted_subscription_count = int(gifts.get("num_gifted_subs", 0))
-	snapshot.latest_gifted_subscription = _parse_gift(_dictionary(gifts.get("latest_gifted_sub", {})))
+	snapshot.gifted_subscription_count = _int(gifts.get("num_gifted_subs", 0), 0, "gifted_subs.num_gifted_subs")
+	snapshot.latest_gifted_subscription = _parse_gift(_dictionary(gifts.get("latest_gifted_sub", {})), "gifted_subs.latest_gifted_sub")
 	snapshot.recent_gifted_subscriptions = _parse_gifts(_array(gifts.get("recent_gifted_subs", [])))
 
 	for raw_stream: Variant in _array(root.get("livestreams", [])):
 		if raw_stream is Dictionary:
-			snapshot.livestreams.append(_parse_stream(raw_stream))
+			var stream := _parse_stream(raw_stream)
+			if stream != null:
+				snapshot.livestreams.append(stream)
 
+	snapshot.unknown_field_paths = _schema_warnings.duplicate()
 	_collect_unknowns(root, snapshot.unknown_field_paths)
 	result.snapshot = snapshot
 	return result
@@ -81,7 +88,7 @@ func _validate_collection_types(root: Dictionary) -> String:
 	for collection_name: String in ["followers", "subscribers", "gifted_subs"]:
 		var collection: Dictionary = _dictionary(root.get(collection_name, {}))
 		for key: Variant in collection:
-			if str(key).begins_with("recent_") and not collection[key] is Array:
+			if str(key).begins_with("recent_") and collection[key] != null and not collection[key] is Array:
 				return "Rumble field '%s.%s' must be an array" % [collection_name, key]
 	for raw_stream: Variant in _array(root.get("livestreams", [])):
 		if not raw_stream is Dictionary:
@@ -91,31 +98,31 @@ func _validate_collection_types(root: Dictionary) -> String:
 			return "Rumble livestream chat must be an object"
 		if chat is Dictionary:
 			for key: String in ["recent_messages", "recent_rants"]:
-				if chat.has(key) and not chat[key] is Array:
+				if chat.has(key) and chat[key] != null and not chat[key] is Array:
 					return "Rumble chat field '%s' must be an array" % key
 	return ""
 
 
-func _parse_people(items: Array, kind: String) -> Array[RumblePersonEvent]:
+func _parse_people(items: Array, kind: String, path: String) -> Array[RumblePersonEvent]:
 	var output: Array[RumblePersonEvent] = []
 	for item: Variant in items:
 		if item is Dictionary:
-			var parsed := _parse_person(item, kind)
+			var parsed := _parse_person(item, kind, path)
 			if parsed != null:
 				output.append(parsed)
 	return output
 
 
-func _parse_person(item: Dictionary, kind: String) -> RumblePersonEvent:
+func _parse_person(item: Dictionary, kind: String, path: String) -> RumblePersonEvent:
 	if item.is_empty():
 		return null
 	var value := RumblePersonEvent.new()
 	value.kind = kind
-	value.username = _first(item, PackedStringArray(["username", "user"]))
-	value.display_name = _first(item, PackedStringArray(["display_name", "username", "user"]))
-	value.created_at = str(item.get("followed_on", item.get("subscribed_on", "")))
-	value.amount_cents = int(item.get("amount_cents", 0))
-	value.amount_dollars = float(item.get("amount_dollars", 0.0))
+	value.username = _first(item, PackedStringArray(["username", "user"]), path)
+	value.display_name = _first(item, PackedStringArray(["display_name", "username", "user"]), path)
+	value.created_at = _str(item.get("followed_on", item.get("subscribed_on", "")), "", path + ".created_at")
+	value.amount_cents = _int(item.get("amount_cents", 0), 0, path + ".amount_cents")
+	value.amount_dollars = _float(item.get("amount_dollars", 0.0), 0.0, path + ".amount_dollars")
 	value.fingerprint = _fingerprint([kind, value.username, value.created_at, value.amount_cents])
 	return value
 
@@ -130,79 +137,79 @@ func _parse_gifts(items: Array) -> Array[RumbleGiftedSubscription]:
 	return output
 
 
-func _parse_gift(item: Dictionary) -> RumbleGiftedSubscription:
+func _parse_gift(item: Dictionary, path: String = "gifted_subs.recent_gifted_subs[]") -> RumbleGiftedSubscription:
 	if item.is_empty():
 		return null
 	var value := RumbleGiftedSubscription.new()
-	value.purchased_by = _first(item, PackedStringArray(["purchased_by", "username", "user"]))
-	value.total_gifts = int(item.get("total_gifts", 0))
-	value.remaining_gifts = int(item.get("remaining_gifts", 0))
-	value.gift_type = str(item.get("gift_type", ""))
-	value.video_id = _id(item.get("video_id", ""))
+	value.purchased_by = _first(item, PackedStringArray(["purchased_by", "username", "user"]), path)
+	value.total_gifts = _int(item.get("total_gifts", 0), 0, path + ".total_gifts")
+	value.remaining_gifts = _int(item.get("remaining_gifts", 0), 0, path + ".remaining_gifts")
+	value.gift_type = _str(item.get("gift_type", ""), "", path + ".gift_type")
+	value.video_id = _id(item.get("video_id", ""), path + ".video_id")
 	value.fingerprint = _fingerprint(["gift", value.purchased_by, value.video_id, value.gift_type, value.total_gifts, value.remaining_gifts])
 	return value
 
 
-func _parse_stream(item: Dictionary) -> RumbleLivestream:
+func _parse_stream(item: Dictionary, path: String = "livestreams[]") -> RumbleLivestream:
 	var stream := RumbleLivestream.new()
-	stream.id = _id(item.get("id", ""))
-	stream.title = str(item.get("title", ""))
-	stream.created_at = str(item.get("created_on", ""))
-	stream.is_live = bool(item.get("is_live", false))
-	stream.likes = int(item.get("likes", 0))
-	stream.dislikes = int(item.get("dislikes", 0))
-	stream.watching_now = int(item.get("watching_now", 0))
+	stream.id = _id(item.get("id", ""), path + ".id")
+	stream.title = _str(item.get("title", ""), "", path + ".title")
+	stream.created_at = _str(item.get("created_on", ""), "", path + ".created_on")
+	stream.is_live = _bool(item.get("is_live", false), false, path + ".is_live")
+	stream.likes = _int(item.get("likes", 0), 0, path + ".likes")
+	stream.dislikes = _int(item.get("dislikes", 0), 0, path + ".dislikes")
+	stream.watching_now = _int(item.get("watching_now", 0), 0, path + ".watching_now")
 	var categories: Dictionary = _dictionary(item.get("categories", {}))
-	stream.primary_category = _parse_category(_dictionary(categories.get("primary", {})))
-	stream.secondary_category = _parse_category(_dictionary(categories.get("secondary", {})))
+	stream.primary_category = _parse_category(_dictionary(categories.get("primary", {})), path + ".categories.primary")
+	stream.secondary_category = _parse_category(_dictionary(categories.get("secondary", {})), path + ".categories.secondary")
 	var chat: Dictionary = _dictionary(item.get("chat", {}))
-	stream.latest_message = _parse_message(_dictionary(chat.get("latest_message", {})), stream)
+	stream.latest_message = _parse_message(_dictionary(chat.get("latest_message", {})), stream, path + ".chat.latest_message")
 	for raw_message: Variant in _array(chat.get("recent_messages", [])):
 		if raw_message is Dictionary:
-			stream.recent_messages.append(_parse_message(raw_message, stream))
-	stream.latest_rant = _parse_rant(_dictionary(chat.get("latest_rant", {})), stream)
+			stream.recent_messages.append(_parse_message(raw_message, stream, path + ".chat.recent_messages[]"))
+	stream.latest_rant = _parse_rant(_dictionary(chat.get("latest_rant", {})), stream, path + ".chat.latest_rant")
 	for raw_rant: Variant in _array(chat.get("recent_rants", [])):
 		if raw_rant is Dictionary:
-			stream.recent_rants.append(_parse_rant(raw_rant, stream))
+			stream.recent_rants.append(_parse_rant(raw_rant, stream, path + ".chat.recent_rants[]"))
 	return stream
 
 
-func _parse_category(item: Dictionary) -> RumbleCategory:
+func _parse_category(item: Dictionary, path: String) -> RumbleCategory:
 	if item.is_empty():
 		return null
 	var value := RumbleCategory.new()
-	value.slug = str(item.get("slug", ""))
-	value.title = str(item.get("title", ""))
+	value.slug = _str(item.get("slug", ""), "", path + ".slug")
+	value.title = _str(item.get("title", ""), "", path + ".title")
 	return value
 
 
-func _parse_message(item: Dictionary, stream: RumbleLivestream) -> RumbleChatMessage:
+func _parse_message(item: Dictionary, stream: RumbleLivestream, path: String) -> RumbleChatMessage:
 	if item.is_empty():
 		return null
 	var value := RumbleChatMessage.new()
 	value.stream_id = stream.id
 	value.stream_title = stream.title
-	value.username = str(item.get("username", ""))
+	value.username = _str(item.get("username", ""), "", path + ".username")
 	value.badges = _strings(item.get("badges", []))
-	value.text = str(item.get("text", ""))
-	value.created_at = str(item.get("created_on", ""))
+	value.text = _str(item.get("text", ""), "", path + ".text")
+	value.created_at = _str(item.get("created_on", ""), "", path + ".created_on")
 	value.fingerprint = _fingerprint(["chat", value.stream_id, value.username, value.created_at, value.text])
 	return value
 
 
-func _parse_rant(item: Dictionary, stream: RumbleLivestream) -> RumbleRantEvent:
+func _parse_rant(item: Dictionary, stream: RumbleLivestream, path: String) -> RumbleRantEvent:
 	if item.is_empty():
 		return null
 	var value := RumbleRantEvent.new()
 	value.stream_id = stream.id
 	value.stream_title = stream.title
-	value.username = str(item.get("username", ""))
+	value.username = _str(item.get("username", ""), "", path + ".username")
 	value.badges = _strings(item.get("badges", []))
-	value.text = str(item.get("text", ""))
-	value.created_at = str(item.get("created_on", ""))
-	value.expires_at = str(item.get("expires_on", ""))
-	value.amount_cents = int(item.get("amount_cents", 0))
-	value.amount_dollars = float(item.get("amount_dollars", 0.0))
+	value.text = _str(item.get("text", ""), "", path + ".text")
+	value.created_at = _str(item.get("created_on", ""), "", path + ".created_on")
+	value.expires_at = _str(item.get("expires_on", ""), "", path + ".expires_on")
+	value.amount_cents = _int(item.get("amount_cents", 0), 0, path + ".amount_cents")
+	value.amount_dollars = _float(item.get("amount_dollars", 0.0), 0.0, path + ".amount_dollars")
 	value.fingerprint = _fingerprint(["rant", value.stream_id, value.username, value.created_at, value.text, value.amount_cents])
 	return value
 
@@ -283,17 +290,60 @@ func _strings(value: Variant) -> PackedStringArray:
 	return output
 
 
-func _first(item: Dictionary, names: PackedStringArray) -> String:
+func _first(item: Dictionary, names: PackedStringArray, path: String) -> String:
 	for name: String in names:
-		var value := str(item.get(name, ""))
+		var value := _str(item.get(name, ""), "", path + "." + name)
 		if not value.is_empty():
 			return value
 	return ""
 
 
-func _id(value: Variant) -> String:
+func _id(value: Variant, path: String) -> String:
 	if value == null:
 		return ""
 	if value is float and is_equal_approx(value, floorf(value)):
 		return str(int(value))
-	return str(value)
+	return _str(value, "", path)
+
+
+func _int(value: Variant, fallback: int, path: String) -> int:
+	if value is int:
+		return value
+	if value is float and is_finite(value):
+		return int(value)
+	if value is String and value.is_valid_int():
+		return value.to_int()
+	_warn_scalar(path)
+	return fallback
+
+
+func _float(value: Variant, fallback: float, path: String) -> float:
+	if (value is int or value is float) and is_finite(float(value)):
+		return float(value)
+	if value is String and value.is_valid_float() and is_finite(value.to_float()):
+		return value.to_float()
+	_warn_scalar(path)
+	return fallback
+
+
+func _bool(value: Variant, fallback: bool, path: String) -> bool:
+	if value is bool:
+		return value
+	if value is int or (value is float and is_finite(value)):
+		return value != 0
+	if value is String and value.is_valid_int():
+		return value.to_int() != 0
+	_warn_scalar(path)
+	return fallback
+
+
+func _str(value: Variant, fallback: String, path: String) -> String:
+	if value is String or value is int or (value is float and is_finite(value)):
+		return str(value)
+	_warn_scalar(path)
+	return fallback
+
+
+func _warn_scalar(path: String) -> void:
+	if _schema_warnings.size() < MAX_UNKNOWN_FIELDS and not _schema_warnings.has(path):
+		_schema_warnings.append(path)

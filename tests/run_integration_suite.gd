@@ -1,5 +1,11 @@
 extends SceneTree
 
+class NullDiffer:
+	extends RumbleSnapshotDiffer
+
+	func process(_snapshot: RumbleSnapshot, _observed_at_unix: int = 0) -> RumbleChangeSet:
+		return null
+
 var _checks: int = 0
 var _failures: PackedStringArray = PackedStringArray()
 var _server: TCPServer = null
@@ -73,6 +79,22 @@ func _run() -> void:
 	_check(await client.poll_once() == null, "client accepts documented offline shape")
 	_check(transitions.size() == 4 and transitions[-1].kind == "ended" and transitions[-1].uncertain, "offline disappearance remains explicit and uncertain")
 	_check(client.diagnostic_summary().fingerprint_count > 0 and client.diagnostic_summary().credential == "loaded", "safe diagnostics expose health and bounded counts without URL material")
+
+	var nullable: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/ms001/update.json"))
+	nullable.livestreams[0].likes = null
+	nullable.livestreams[0].chat.recent_rants[0].amount_cents = null
+	nullable.livestreams[0].chat.recent_messages.append({"username": "nullable-viewer", "text": "new-nullable-event", "created_on": "2026-10-18"})
+	nullable.followers.recent_followers = null
+	nullable.subscribers.recent_subscribers = null
+	nullable.gifted_subs.recent_gifted_subs = null
+	_set_response(200, JSON.stringify(nullable))
+	_check(await client.poll_once() == null and client.last_snapshot.livestreams[0] != null and chats.size() == 2 and chats[-1].text == "new-nullable-event", "client delivers nullable payload without stopping events")
+	var original_differ := client._differ
+	client._differ = NullDiffer.new()
+	last_good = client.last_snapshot
+	var failed_diff := await client.poll_once()
+	_check(failed_diff != null and failed_diff.category == "parse" and client.last_snapshot == last_good, "null diff returns a parse error without replacing last good state")
+	client._differ = original_differ
 
 	client.stop_polling("integration_complete")
 	client.queue_free()

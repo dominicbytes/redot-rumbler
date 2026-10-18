@@ -177,10 +177,11 @@ func poll_once() -> RumbleApiError:
 	response.clear_body()
 	var parsed := _parser.parse_json(payload)
 	payload = ""
-	if not parsed.is_success():
+	if parsed == null or not parsed.is_success():
+		if parsed == null:
+			return RumbleApiError.custom("parse", "Rumble parser produced no result")
 		return parsed.error
-	_apply_snapshot(parsed.snapshot)
-	return null
+	return _apply_snapshot(parsed.snapshot)
 
 
 func clear_local_data() -> RumbleApiError:
@@ -254,8 +255,10 @@ func _poll_loop(generation: int) -> void:
 			_set_state("polling", "retry_due")
 
 
-func _apply_snapshot(snapshot: RumbleSnapshot) -> void:
+func _apply_snapshot(snapshot: RumbleSnapshot) -> RumbleApiError:
 	var changes := _differ.process(snapshot)
+	if changes == null:
+		return RumbleApiError.custom("parse", "Rumble snapshot processing failed")
 	last_snapshot = snapshot
 	last_success_unix = int(Time.get_unix_time_from_system())
 	var current_state := _differ.state_dictionary()
@@ -302,6 +305,7 @@ func _apply_snapshot(snapshot: RumbleSnapshot) -> void:
 		possible_event_gap.emit(gap)
 	for path: String in changes.schema_warnings:
 		schema_warning.emit(path)
+	return null
 
 
 func _new_descriptor(target: String) -> RumbleSessionDescriptor:

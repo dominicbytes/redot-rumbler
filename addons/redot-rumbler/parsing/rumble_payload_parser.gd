@@ -129,10 +129,16 @@ func _parse_person(item: Dictionary, kind: String, path: String) -> RumblePerson
 
 func _parse_gifts(items: Array) -> Array[RumbleGiftedSubscription]:
 	var output: Array[RumbleGiftedSubscription] = []
+	var occurrences: Dictionary = {}
 	for item: Variant in items:
 		if item is Dictionary:
 			var parsed := _parse_gift(item)
 			if parsed != null:
+				var base := parsed.fingerprint
+				var occurrence := int(occurrences.get(base, 0))
+				occurrences[base] = occurrence + 1
+				if occurrence > 0:
+					parsed.fingerprint = _fingerprint([base, occurrence])
 				output.append(parsed)
 	return output
 
@@ -146,7 +152,7 @@ func _parse_gift(item: Dictionary, path: String = "gifted_subs.recent_gifted_sub
 	value.remaining_gifts = _int(item.get("remaining_gifts", 0), 0, path + ".remaining_gifts")
 	value.gift_type = _str(item.get("gift_type", ""), "", path + ".gift_type")
 	value.video_id = _id(item.get("video_id", ""), path + ".video_id")
-	value.fingerprint = _fingerprint(["gift", value.purchased_by, value.video_id, value.gift_type, value.total_gifts, value.remaining_gifts])
+	value.fingerprint = _fingerprint(["gift", value.purchased_by, value.video_id, value.gift_type])
 	return value
 
 

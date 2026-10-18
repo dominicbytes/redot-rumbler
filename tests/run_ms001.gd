@@ -203,3 +203,24 @@ func _test_gift_claims() -> void:
 	_check(snapshot.recent_gifted_subscriptions[0].fingerprint != snapshot.recent_gifted_subscriptions[1].fingerprint, "identical purchase occurrences have distinct fingerprints")
 	_check(snapshot.latest_gifted_subscription.fingerprint == snapshot.recent_gifted_subscriptions[0].fingerprint, "latest gift shares the first occurrence identity")
 	_check(duplicates.process(snapshot, 1002).gifted_subscriptions.is_empty(), "repeated duplicate payload emits no purchase again")
+
+	var legacy_state := duplicates.state_dictionary()
+	legacy_state.erase("gift_fingerprint_version")
+	legacy_state.collections.gifted_subscriptions = [{"hash": "legacy-count-based-hash", "seen_at": 1002}]
+	var upgraded := RumbleSnapshotDiffer.new()
+	upgraded.replay_history_on_first_poll = true
+	_check(upgraded.load_state(legacy_state), "legacy gift hash state remains loadable")
+	var new_message := RumbleChatMessage.new()
+	new_message.fingerprint = "upgrade-chat"
+	var stream := RumbleLivestream.new()
+	stream.id = "upgrade-stream"
+	stream.recent_messages.append(new_message)
+	snapshot.livestreams.append(stream)
+	var migrated := upgraded.process(snapshot, 1003)
+	_check(migrated.gifted_subscriptions.is_empty() and migrated.chat_messages.size() == 1, "legacy hash upgrade silently baselines gifts while other event delivery continues")
+	_check(upgraded.process(snapshot, 1004).gifted_subscriptions.is_empty(), "migrated gifts remain deduplicated")
+	payload.gifted_subs.recent_gifted_subs.append(gift.duplicate())
+	snapshot = _parser.parse_json(JSON.stringify(payload)).snapshot
+	_check(upgraded.process(snapshot, 1005).gifted_subscriptions.size() == 1, "new gift occurrence emits after legacy baseline")
+	var current := RumbleSnapshotDiffer.new()
+	_check(current.load_state(upgraded.state_dictionary()) and current.process(snapshot, 1006).gifted_subscriptions.is_empty(), "current fingerprint version survives restart without replay")

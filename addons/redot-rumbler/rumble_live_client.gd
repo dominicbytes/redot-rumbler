@@ -95,6 +95,15 @@ func connect_api_url(api_url: String) -> RumbleApiError:
 	if not stored.is_success():
 		return stored.error
 	var descriptor := _new_descriptor(target)
+	var previous_descriptor := connected_descriptor
+	if previous_descriptor == null:
+		var saved: RumbleSessionDescriptorLoadResult = _descriptor_store.load_descriptor(_session_slot)
+		if saved.is_success():
+			previous_descriptor = saved.descriptor
+	if previous_descriptor != null:
+		descriptor.response_type = previous_descriptor.response_type
+		descriptor.user_id = previous_descriptor.user_id
+		descriptor.channel_id = previous_descriptor.channel_id
 	var save_error: RumbleApiError = _descriptor_store.save(descriptor)
 	if save_error != null:
 		await _credential_client.delete(target)
@@ -256,7 +265,21 @@ func _poll_loop(generation: int) -> void:
 
 
 func _apply_snapshot(snapshot: RumbleSnapshot) -> RumbleApiError:
+	var identity_changed := connected_descriptor != null and (not connected_descriptor.user_id.is_empty() or not connected_descriptor.channel_id.is_empty()) and (
+		connected_descriptor.response_type != snapshot.response_type or connected_descriptor.user_id != snapshot.user_id or connected_descriptor.channel_id != snapshot.channel_id)
+	if identity_changed:
+		var delete_error: RumbleApiError = _state_store.delete_state(_session_slot)
+		if delete_error != null:
+			return delete_error
+		_differ.clear()
+		_saved_state.clear()
+		last_snapshot = null
+		last_success_unix = 0
+	var replay_history := _differ.replay_history_on_first_poll
+	if identity_changed:
+		_differ.replay_history_on_first_poll = false
 	var changes := _differ.process(snapshot)
+	_differ.replay_history_on_first_poll = replay_history
 	if changes == null:
 		return RumbleApiError.custom("parse", "Rumble snapshot processing failed")
 	last_snapshot = snapshot

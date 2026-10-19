@@ -39,6 +39,7 @@ func _run() -> void:
 	_test_protocol_and_redaction()
 	_test_command_router()
 	await _test_client_persistence_and_isolation()
+	await _test_identity_changes()
 	_finish()
 
 
@@ -128,6 +129,57 @@ func _test_client_persistence_and_isolation() -> void:
 	_check(clear_error == null and not restored.has_loaded_credential(), "clear-data removes loaded credential and state")
 	_check(not credentials.values.has(target) and not FileAccess.file_exists(descriptors.path_for_slot("primary")) and not FileAccess.file_exists(states.path_for_slot("primary")), "clear-data deletes vault, descriptor, and bounded hash state")
 	restored.queue_free()
+	await process_frame
+
+
+func _test_identity_changes() -> void:
+	var credentials := MockCredentialClient.new()
+	var descriptors := RumbleSessionDescriptorStore.new("res://.test-output/identity/sessions")
+	var states := RumbleStateStore.new("res://.test-output/identity/state")
+	var config := RumbleClientConfig.new()
+	config.publisher_id = "identity-publisher"
+	config.application_id = "identity-app"
+	config.replay_history_on_first_poll = true
+	var client := RumbleLiveClient.new()
+	root.add_child(client)
+	_check(client.configure(config, "primary", credentials, descriptors, states) == null, "identity client configures")
+	_check(await client.connect_api_url("https://rumble.com/path?key=SECRETKEY1") == null, "first channel connects through mock vault")
+	var parser := RumblePayloadParser.new()
+	var first := parser.parse_json(FileAccess.get_file_as_string("res://tests/fixtures/ms001/baseline.json")).snapshot
+	var old_chat := RumbleChatMessage.new()
+	old_chat.text = "old channel only"
+	old_chat.fingerprint = "old-channel-only"
+	first.livestreams[0].recent_messages.append(old_chat)
+	client._apply_snapshot(first)
+	var chats: Array[RumbleChatMessage] = []
+	client.chat_message_received.connect(func(value: RumbleChatMessage) -> void: chats.append(value))
+	_check(await client.connect_api_url("https://rumble.com/other?key=SECRETKEY1") == null, "replacement channel URL connects")
+	var second := parser.parse_json(FileAccess.get_file_as_string("res://tests/fixtures/ms001/update.json")).snapshot
+	second.user_id = "different-user"
+	second.channel_id = "different-channel"
+	client._apply_snapshot(second)
+	_check(chats.is_empty(), "changed identity establishes silent baseline even with replay enabled")
+	var state := states.load_state("primary")
+	_check(int(state.counters.followers) == second.follower_count and client.connected_descriptor.channel_id == "different-channel" and not JSON.stringify(state).contains("old-channel-only"), "new state and descriptor belong to replacement channel")
+	_check(await client.connect_api_url("https://rumble.com/rotated?key=SECRETKEY1") == null, "same-channel key rotation connects")
+	var new_chat := RumbleChatMessage.new()
+	new_chat.text = "after rotation"
+	new_chat.fingerprint = "rotation-event"
+	second.livestreams[0].recent_messages.append(new_chat)
+	client._apply_snapshot(second)
+	_check(chats.size() == 1 and chats[0].text == "after rotation", "same identity retains diff state and delivers only the new event")
+	client.queue_free()
+	await process_frame
+	var restarted := RumbleLiveClient.new()
+	root.add_child(restarted)
+	_check(restarted.configure(config, "primary", credentials, descriptors, states) == null, "restart loads prior diff state")
+	_check(await restarted.connect_api_url("https://rumble.com/restart?key=SECRETKEY1") == null, "new credential may connect directly after restart")
+	var restarted_chats: Array[RumbleChatMessage] = []
+	restarted.chat_message_received.connect(func(value: RumbleChatMessage) -> void: restarted_chats.append(value))
+	restarted._apply_snapshot(first)
+	_check(restarted_chats.is_empty() and restarted.connected_descriptor.user_id == first.user_id, "stored descriptor identity protects direct reconnect after restart")
+	await restarted.clear_local_data()
+	restarted.queue_free()
 	await process_frame
 
 

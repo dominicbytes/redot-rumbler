@@ -2,6 +2,7 @@ class_name RumbleSnapshotDiffer
 extends RefCounted
 
 const STATE_SCHEMA_VERSION: int = 1
+const GIFT_FINGERPRINT_VERSION: int = 1
 const MAX_INACTIVE_STREAM_COLLECTIONS: int = 64
 
 var fingerprint_capacity: int = 250
@@ -13,6 +14,7 @@ var _collection_order: Dictionary = {}
 var _collection_seen_at: Dictionary = {}
 var _previous_counters: Dictionary = {}
 var _previous_streams: Dictionary = {}
+var _gift_baseline_pending: bool = false
 
 
 func process(snapshot: RumbleSnapshot, observed_at_unix: int = 0) -> RumbleChangeSet:
@@ -26,7 +28,8 @@ func process(snapshot: RumbleSnapshot, observed_at_unix: int = 0) -> RumbleChang
 
 	_process_people("followers", snapshot.recent_followers, changes.followers, emit_items, now_unix)
 	_process_people("subscribers", snapshot.recent_subscribers, changes.subscribers, emit_items, now_unix)
-	_process_gifts(snapshot.recent_gifted_subscriptions, changes.gifted_subscriptions, emit_items, now_unix)
+	_process_gifts(snapshot.recent_gifted_subscriptions, changes.gifted_subscriptions, emit_items and not _gift_baseline_pending, now_unix)
+	_gift_baseline_pending = false
 	var chat_and_rant_count := 0
 	var active_collections: Dictionary = {}
 	for stream: RumbleLivestream in snapshot.livestreams:
@@ -62,6 +65,7 @@ func state_dictionary() -> Dictionary:
 		collections[str(collection)] = entries
 	return {
 		"schema_version": STATE_SCHEMA_VERSION,
+		"gift_fingerprint_version": GIFT_FINGERPRINT_VERSION,
 		"baseline_established": baseline_established,
 		"fingerprint_capacity": fingerprint_capacity,
 		"fingerprint_ttl_seconds": fingerprint_ttl_seconds,
@@ -95,12 +99,17 @@ func load_state(source: Dictionary) -> bool:
 				seen[fingerprint] = int(entry.get("seen_at", 0))
 			_collection_order[str(collection)] = order
 			_collection_seen_at[str(collection)] = seen
+	if int(source.get("gift_fingerprint_version", 0)) != GIFT_FINGERPRINT_VERSION and _collection_order.has("gifted_subscriptions"):
+		_collection_order.erase("gifted_subscriptions")
+		_collection_seen_at.erase("gifted_subscriptions")
+		_gift_baseline_pending = true
 	_previous_counters = source.get("counters", {}).duplicate(true) if source.get("counters", {}) is Dictionary else {}
 	_previous_streams = source.get("streams", {}).duplicate(true) if source.get("streams", {}) is Dictionary else {}
 	return true
 
 
 func clear() -> void:
+	_gift_baseline_pending = false
 	baseline_established = false
 	_collection_order.clear()
 	_collection_seen_at.clear()

@@ -12,6 +12,7 @@ func _init() -> void:
 
 
 func _run() -> void:
+	_test_nullable_scalars()
 	var baseline_result := _parser.parse_json(_read("baseline.json"))
 	_check(baseline_result.is_success(), "full official-shaped fixture parses")
 	if not baseline_result.is_success():
@@ -97,6 +98,40 @@ func _run() -> void:
 	var bad_shape := _parser.parse_json("{\"livestreams\":{}}")
 	_check(not bad_shape.is_success() and bad_shape.error.category == "schema", "malformed collection types are rejected without coercion")
 	_finish()
+
+
+func _test_nullable_scalars() -> void:
+	var data: Dictionary = JSON.parse_string(_read("baseline.json"))
+	data.livestreams[0].likes = null
+	data.livestreams[0].is_live = null
+	data.subscribers.latest_subscriber.amount_cents = null
+	data.subscribers.latest_subscriber.amount_dollars = null
+	data.livestreams[0].chat.recent_rants[0].amount_cents = null
+	data.livestreams[0].chat.recent_rants[0].amount_dollars = null
+	var result := _parser.parse_json(JSON.stringify(data))
+	_check(result.is_success(), "nullable scalar payload still parses")
+	if result.snapshot != null:
+		_check(result.snapshot.livestreams.size() == 1 and result.snapshot.livestreams[0] != null, "null scalar cannot append a null stream")
+		if result.snapshot.livestreams[0] != null:
+			_check(result.snapshot.livestreams[0].likes == 0 and not result.snapshot.livestreams[0].is_live, "null numeric and boolean values default safely")
+			_check(result.snapshot.livestreams[0].recent_rants[0] != null and result.snapshot.livestreams[0].recent_rants[0].amount_cents == 0, "null rant amounts preserve the event")
+		_check(result.snapshot.latest_subscriber != null and result.snapshot.latest_subscriber.amount_cents == 0, "null subscriber amounts preserve the event")
+		_check(result.snapshot.unknown_field_paths.has("livestreams[].likes"), "invalid scalar records a value-free schema warning path")
+	data.followers.recent_followers = null
+	data.subscribers.recent_subscribers = null
+	data.gifted_subs.recent_gifted_subs = null
+	data.livestreams[0].chat.recent_messages = null
+	data.livestreams[0].chat.recent_rants = null
+	result = _parser.parse_json(JSON.stringify(data))
+	_check(result.is_success(), "null recent collections are accepted as empty")
+	if result.is_success():
+		_check(result.snapshot.recent_followers.is_empty() and result.snapshot.recent_subscribers.is_empty() and result.snapshot.recent_gifted_subscriptions.is_empty(), "null person and gift lists normalize to empty")
+		_check(result.snapshot.livestreams[0].recent_messages.is_empty() and result.snapshot.livestreams[0].recent_rants.is_empty(), "null chat lists normalize to empty")
+	for bad: Variant in [null, [], {}, true, "wrong"]:
+		result = _parser.parse_json(JSON.stringify({"now": bad, "type": bad, "followers": {"num_followers": bad}, "livestreams": [{"id": "s", "likes": bad, "title": bad}]}))
+		_check(result.is_success() and result.snapshot.livestreams[0] != null, "wrong scalar types cannot interrupt parsing")
+	var numeric := _parser.parse_json('{"now":"42","followers":{"num_followers":3.0},"livestreams":[{"id":7,"likes":"12","is_live":"1"}]}')
+	_check(numeric.is_success() and numeric.snapshot.now_unix == 42 and numeric.snapshot.follower_count == 3 and numeric.snapshot.livestreams[0].likes == 12 and numeric.snapshot.livestreams[0].is_live, "numeric primitives and integral strings coerce safely")
 
 
 func _saturated_payload(count: int, prefix: String) -> String:

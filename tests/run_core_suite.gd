@@ -52,6 +52,26 @@ func _test_contract_and_policy() -> void:
 	_check(RumbleUrlPolicy.validate_api_url("https://rumble.com/example") == null, "official HTTPS Rumble URL passes validation")
 	_check(RumbleUrlPolicy.validate_api_url("https://rumble.com.evil.example/path") != null, "lookalike host is rejected")
 	_check(RumbleUrlPolicy.validate_api_url("http://rumble.com/example") != null, "plaintext platform URL is rejected")
+	var malformed_urls: Array[String] = [
+		"https://rumble.com:/-livestream-api/get-data?key=SECRETKEY1",
+		"https://rumble.com:99999/-livestream-api/get-data?key=SECRETKEY1",
+		"https://rumble.com:443 /-livestream-api/get-data?key=SECRETKEY1",
+		"https://rumble.com:0/path?key=SECRETKEY1",
+		"https://rumble.com:abc/path?key=SECRETKEY1",
+		"https://rumble.com/path?key=SECRETKEY1 value",
+		"https://rumble.com/path?key=SECRETKEY1\t",
+		"https://rumble.com/path?key=SECRETKEY1" + String.chr(1),
+		"https://rumble.com/path?key=SECRETKEY1" + String.chr(127),
+		"https://rumble.com/path?key=SECRETKEY1" + String.chr(160),
+		"https://user@rumble.com/path?key=SECRETKEY1",
+	]
+	for url: String in malformed_urls:
+		var error := RumbleUrlPolicy.validate_api_url(url)
+		_check(error != null, "malformed secret URL rejected before engine parsing")
+		if error != null:
+			_check(not error.message.contains("SECRETKEY1"), "validation error contains no credential")
+	_check(RumbleUrlPolicy.validate_api_url("https://api.rumble.com:443/path?key=SECRETKEY1") == null, "valid explicit HTTPS port remains supported")
+	_check(RumbleUrlPolicy.validate_api_url("https://rumble.com:65535/path") == null, "maximum valid port is supported")
 	_check(is_equal_approx(RumblePollPolicy.interval(0.5), 2.0), "poll interval enforces the two-second floor")
 	_check(is_equal_approx(RumblePollPolicy.backoff(1, 0.0), 2.0) and RumblePollPolicy.backoff(10, 1.0) <= 60.0, "backoff is exponential, jitter-bounded, and capped")
 	_check(is_equal_approx(RumblePollPolicy.backoff(1, 0.0, 12.0), 12.0), "server retry metadata wins over shorter backoff")
@@ -122,6 +142,11 @@ func _test_client_persistence_and_isolation() -> void:
 	var restored := RumbleLiveClient.new()
 	root.add_child(restored)
 	_check(restored.configure(config, "primary", credentials, descriptors, states) == null, "released slot can be acquired after restart")
+	credentials.values[target] = "https://rumble.com:/-livestream-api/get-data?key=SECRETKEY1"
+	var invalid_restore := await restored.restore_connection()
+	_check(invalid_restore != null and invalid_restore.category == "corrupt_credential", "restore refuses malformed persisted URL")
+	_check(not restored.has_loaded_credential() and not invalid_restore.message.contains("SECRETKEY1"), "invalid restore loads no URL and returns a redacted error")
+	credentials.values[target] = "https://rumble.com/example"
 	var restore_error := await restored.restore_connection()
 	_check(restore_error == null and restored.has_loaded_credential(), "saved vault credential restores without exposing it through the descriptor")
 	var clear_error := await restored.clear_local_data()

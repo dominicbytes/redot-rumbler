@@ -1,6 +1,6 @@
 # Testing and certification boundary
 
-All deterministic suites use Redot `26.2.stable.official.4f5b14aba`.
+Deterministic development suites target Redot `26.3.rc.1.official.704b10a8e`. Source-test results do not certify editor or exported-game compatibility.
 
 | Suite | Coverage |
 | --- | --- |
@@ -9,6 +9,8 @@ All deterministic suites use Redot `26.2.stable.official.4f5b14aba`.
 | `run_http_transport_suite.gd` | Single flight; status metadata; no redirects; cancellation; response limit; host/TLS validation |
 | `run_integration_suite.gd` | Loopback client baseline/update/5xx/malformed/recovery/offline sequence and last-good-state behavior |
 | `run_project_check.gd` | Script/scene resource loading |
+| `run_up03.gd` | Last-observed TTL, bounded inactive collections, offline/live transitions, persistence write counts, JSON restart types, silent cancellation |
+| `addons/redot-rumbler/tests/run_helper_export_paths.gd` | Helper source/runtime paths, export feature tags, and required engine APIs |
 | `run_credential_helper_smoke.gd` | Real Windows Credential Manager ping/store/read/replace/delete |
 
 The Linux binary is compiled with warnings as errors. Its `RRCH/1` ping and wrong-protocol paths are exercised in Ubuntu; without a graphical keyring it correctly returns `UNAVAILABLE`.

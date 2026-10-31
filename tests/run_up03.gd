@@ -23,6 +23,13 @@ class CountingDescriptors:
 		return null
 
 
+class CancelledClient:
+	extends RumbleLiveClient
+
+	func poll_once() -> RumbleApiError:
+		return RumbleApiError.from_transport(ERR_SKIP, "fixture teardown cancellation")
+
+
 var _checks: int = 0
 var _failures: PackedStringArray = PackedStringArray()
 
@@ -96,7 +103,44 @@ func _run() -> void:
 	_check(states.saves == 2, "new fingerprint is persisted before restart")
 	client.queue_free()
 	await process_frame
+	_test_json_state_reload()
+	await _test_silent_cancellation()
 	_finish()
+
+
+func _test_json_state_reload() -> void:
+	var store := RumbleStateStore.new("res://.test-output/restart/state")
+	var parser := RumblePayloadParser.new()
+	var snapshot := parser.parse_json(FileAccess.get_file_as_string("res://tests/fixtures/ms001/baseline.json")).snapshot
+	var original := RumbleSnapshotDiffer.new()
+	original.process(snapshot)
+	_check(store.save("primary", original.state_dictionary()) == null, "restart fixture writes actual JSON state")
+	var loaded := store.load_state("primary")
+	_check(loaded.streams["stream-1"].likes is int and loaded.counters.followers is int, "JSON integral stream metrics and counters restore as ints")
+	var restored := RumbleSnapshotDiffer.new()
+	_check(restored.load_state(loaded), "disk-round-tripped state restores")
+	_check(restored.process(snapshot).stream_transitions.is_empty(), "first unchanged poll after disk restart emits no false stream update")
+	var mixed: Dictionary = {"streams": {"test": {"likes": 2.0, "fraction": 2.5, "enabled": true, "title": "2", "nested": {"count": 3.0}}}, "counters": {"followers": 4.0}}
+	store.save("primary", mixed)
+	loaded = store.load_state("primary")
+	_check(loaded.streams.test.nested.count is int and loaded.streams.test.fraction is float and loaded.streams.test.enabled is bool and loaded.streams.test.title is String, "number normalization preserves fractional and nonnumeric values")
+	store.delete_state("primary")
+
+
+func _test_silent_cancellation() -> void:
+	var client := CancelledClient.new()
+	root.add_child(client)
+	var config := RumbleClientConfig.new()
+	config.publisher_id = "cancel-fixture"
+	config.application_id = "tests"
+	_check(client.configure(config, "primary", null, CountingDescriptors.new(), CountingStore.new()) == null, "cancelled poll client configures")
+	var errors: Array[RumbleApiError] = []
+	client.error_occurred.connect(func(error: RumbleApiError) -> void: errors.append(error))
+	client.connection_state = "polling"
+	await client._poll_loop(client._generation)
+	_check(errors.is_empty() and client.consecutive_failures == 0, "teardown cancellation emits no error and counts no failure")
+	client.queue_free()
+	await process_frame
 
 
 func _check(condition: bool, label: String) -> void:

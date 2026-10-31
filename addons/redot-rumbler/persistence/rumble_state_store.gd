@@ -30,7 +30,12 @@ func load_state(session_slot: String) -> Dictionary:
 	if path.is_empty() or not FileAccess.file_exists(path):
 		return {}
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
-	return parsed if parsed is Dictionary else {}
+	if not parsed is Dictionary:
+		return {}
+	for key: String in ["streams", "counters"]:
+		if parsed.get(key) is Dictionary:
+			_restore_integers(parsed[key])
+	return parsed
 
 
 func delete_state(session_slot: String) -> RumbleApiError:
@@ -45,3 +50,12 @@ func delete_state(session_slot: String) -> RumbleApiError:
 
 func path_for_slot(session_slot: String) -> String:
 	return "%s/%s.json" % [_base_directory, session_slot] if RumbleClientConfig.valid_session_slot(session_slot) else ""
+
+
+func _restore_integers(values: Dictionary) -> void:
+	for key: Variant in values:
+		var value: Variant = values[key]
+		if value is Dictionary:
+			_restore_integers(value)
+		elif value is float and is_finite(value) and value == floorf(value):
+			values[key] = int(value)

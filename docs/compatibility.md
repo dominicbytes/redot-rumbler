@@ -1,8 +1,8 @@
 # Compatibility
 
-## Certified implementation target
+## Development verification target
 
-- Redot `26.2.stable.official.4f5b14aba`
+- Redot `26.3.rc.1.official.704b10a8e` (source-test target)
 - typed GDScript
 - Windows x86-64 helper: built with MSVC and tested against Credential Manager
 - Linux x86-64 helper: built on Ubuntu 24.04 and protocol-tested against `libsecret`; graphical Secret Service certification remains open
